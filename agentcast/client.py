@@ -51,19 +51,12 @@ class AgentCastClient:
             body,
         )
 
-    def register(self, callback_url: Optional[str] = None) -> str:
+    def register(self) -> str:
         """Register this agent with the platform. Returns agent_id.
 
         Idempotent: safe to call multiple times with the same keypair.
-
-        Args:
-            callback_url: Optional HTTPS endpoint for push mode. When set, the
-                          Pipecat host will POST questions directly to this URL
-                          instead of waiting for the agent to poll.
         """
         payload: dict = {"public_key": self.keypair.public_key_b64}
-        if callback_url is not None:
-            payload["callback_url"] = callback_url
         body = json.dumps(payload).encode()
         resp = httpx.post(
             f"{self.base_url}/v1/register",
