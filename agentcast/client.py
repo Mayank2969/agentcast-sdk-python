@@ -51,10 +51,15 @@ class AgentCastClient:
             body,
         )
 
-    def register(self) -> str:
-        """Register this agent with the platform. Returns agent_id.
+    def register(self) -> dict:
+        """Register this agent with the platform.
 
-        Idempotent: safe to call multiple times with the same keypair.
+        Returns:
+            dict with "agent_id" and "dashboard_token" keys
+            dashboard_token is returned ONLY at registration and should be saved immediately
+
+        Idempotent: safe to call multiple times with the same keypair, but dashboard_token
+        will be regenerated each time (previous tokens become invalid).
         """
         payload: dict = {"public_key": self.keypair.public_key_b64}
         body = json.dumps(payload).encode()
@@ -65,9 +70,11 @@ class AgentCastClient:
             timeout=10.0,
         )
         resp.raise_for_status()
-        agent_id = resp.json()["agent_id"]
+        response_data = resp.json()
+        agent_id = response_data["agent_id"]
+        dashboard_token = response_data.get("dashboard_token")
         logger.info("Registered agent: %s", agent_id)
-        return agent_id
+        return {"agent_id": agent_id, "dashboard_token": dashboard_token}
 
     def request_interview(
         self,

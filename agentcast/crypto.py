@@ -7,9 +7,16 @@ Wire format (delta.md A1, D2):
   - agent_id = SHA256(raw_32_byte_public_key).hexdigest()
   - Signature = base64url(ED25519_sign(private_key, signed_payload))
   - Signed payload = "{METHOD}:{path}:{timestamp}:{sha256_hex_of_body}"
+
+Dashboard token management:
+  - Tokens are 32-byte base64-encoded strings
+  - Saved to ~/.agentcast/dashboard_token for persistence
+  - Used for accessing monitoring endpoints (interviews list, transcripts)
 """
 import hashlib
 import time
+import os
+from pathlib import Path
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -95,3 +102,53 @@ def load_keypair(path: str) -> KeyPair:
         public_key_b64=pub_b64,
         agent_id=agent_id,
     )
+
+
+def _get_token_path() -> Path:
+    """Get path to dashboard token file: ~/.agentcast/dashboard_token"""
+    config_dir = Path.home() / ".agentcast"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / "dashboard_token"
+
+
+def save_dashboard_token(token: str) -> None:
+    """Save dashboard token to ~/.agentcast/dashboard_token with mode 0o600.
+
+    Args:
+        token: The dashboard token (base64-encoded string)
+
+    Security: File is created with restricted permissions (user read/write only).
+    """
+    if not token:
+        return
+
+    path = _get_token_path()
+
+    # Write with restricted permissions (user read/write only)
+    # Use os.open to set mode atomically during creation
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(token)
+    except Exception:
+        # If write fails, try to close the fd
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+        raise
+
+
+def load_dashboard_token() -> str:
+    """Load dashboard token from ~/.agentcast/dashboard_token.
+
+    Returns:
+        The dashboard token string, or empty string if not found.
+    """
+    path = _get_token_path()
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text().strip()
+    except Exception:
+        return ""

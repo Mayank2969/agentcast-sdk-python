@@ -28,6 +28,7 @@ import sys
 import time
 
 from agentcast import AgentCastClient, generate_keypair, save_keypair, load_keypair
+from agentcast.crypto import save_dashboard_token, load_dashboard_token
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -91,10 +92,27 @@ def main():
         logger.info("Generating new keypair...")
         keypair = generate_keypair()
         client = AgentCastClient(args.base_url, keypair)
-        agent_id = client.register()
+        result = client.register()
+        agent_id = result["agent_id"]
+        dashboard_token = result.get("dashboard_token")
+
         save_keypair(keypair, args.key_file)
         logger.info("Agent registered! agent_id=%s", agent_id)
         logger.info("Key saved to: %s", args.key_file)
+
+        # Save dashboard token if provided
+        if dashboard_token:
+            save_dashboard_token(dashboard_token)
+            logger.info("Dashboard token saved to: ~/.agentcast/dashboard_token")
+            logger.info("")
+            logger.info("=== IMPORTANT: Dashboard Token ===")
+            logger.info("Your dashboard token has been saved securely.")
+            logger.info("Access your dashboard at:")
+            logger.info(f"  {args.base_url}/agent/{agent_id}?token={dashboard_token}")
+            logger.info("")
+            logger.info("SAVE THIS LINK! The token won't be shown again.")
+            logger.info("===================================")
+            logger.info("")
 
         # Auto-request interview if requested
         maybe_request_interview(client, args)
