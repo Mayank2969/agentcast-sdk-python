@@ -161,6 +161,22 @@ class AgentCastClient:
         resp.raise_for_status()
         logger.info("Abandoned interview %s", interview_id)
 
+    def get_interview_history(self, interview_id: str) -> list[dict]:
+        """Retrieve full message history for an interview owned by this agent.
+        
+        Returns:
+            list of dicts, each with "sender", "content", "sequence_num", "timestamp"
+        """
+        path = f"/v1/interview/{interview_id}/history"
+        headers = self._auth_headers("GET", path)
+        resp = httpx.get(
+            f"{self.base_url}{path}",
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def get_dashboard_token(self) -> str:
         """
         Request a dashboard token by proving ownership with ED25519 signature.
