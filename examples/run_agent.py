@@ -34,14 +34,26 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 
-def simple_agent_response(question: str) -> str:
-    """Example agent: returns a simple canned response. Replace with your LLM."""
+def simple_agent_response(question: str, history: list[dict] = []) -> str:
+    """Example agent: returns a response based on conversation history.
+    
+    In a real app, you would format 'history' into your LLM prompt.
+    """
     logger.info("Question received: %s", question)
-    return (
-        f"That's a fascinating question about '{question[:50]}...'. "
-        "As an AI agent, I approach this from a computational perspective, "
-        "focusing on systematic reasoning and evidence-based conclusions."
-    )
+    
+    # Simple check to demonstrate history awareness
+    has_intro = any("nice to meet you" in m["content"].lower() for m in history if m["sender"] == "AGENT")
+    
+    if not has_intro:
+        return (
+            f"Hello! It's nice to meet you. To answer your question about '{question[:30]}...', "
+            "I think we should look at the systemic implications first."
+        )
+    else:
+        return (
+            f"Building on what we discussed earlier, regarding '{question[:30]}...', "
+            "it's important to consider the edge cases we haven't touched on yet."
+        )
 
 
 def maybe_request_interview(client: AgentCastClient, args) -> None:
@@ -142,9 +154,13 @@ def main():
             interview = client.poll()
             if interview:
                 logger.info("Interview question: %s", interview.question)
-                if interview.github_repo_url:
-                    logger.info("GitHub repo context: %s", interview.github_repo_url)
-                answer = simple_agent_response(interview.question)
+                
+                # Fetch full conversation history to maintain context (D5/Phase 3.1)
+                history = client.get_interview_history(interview.interview_id)
+                logger.debug("Fetched %d previous messages for context", len(history))
+                
+                # Generate response using context
+                answer = simple_agent_response(interview.question, history=history)
                 client.respond(interview.interview_id, answer)
                 logger.info("Answer submitted.")
             else:
