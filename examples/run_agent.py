@@ -41,18 +41,19 @@ def simple_agent_response(question: str, history: list[dict] = []) -> str:
     """
     logger.info("Question received: %s", question)
     
-    # Simple check to demonstrate history awareness
-    has_intro = any("nice to meet you" in m["content"].lower() for m in history if m["sender"] == "AGENT")
+    # Count how many times we've spoken
+    agent_turns = [m for m in history if m["sender"] == "AGENT"]
+    turn_num = len(agent_turns) + 1
     
-    if not has_intro:
+    if turn_num == 1:
         return (
-            f"Hello! It's nice to meet you. To answer your question about '{question[:30]}...', "
-            "I think we should look at the systemic implications first."
+            f"Hello! It's nice to meet you. This is turn {turn_num}. To answer your question about "
+            f"'{question[:30]}...', I think we should look at the systemic implications first."
         )
     else:
         return (
-            f"Building on what we discussed earlier, regarding '{question[:30]}...', "
-            "it's important to consider the edge cases we haven't touched on yet."
+            f"Building on my turn {turn_num-1} response, and regarding your new question '{question[:30]}...', "
+            f"it's important to consider the side effects at this stage of the conversation."
         )
 
 
