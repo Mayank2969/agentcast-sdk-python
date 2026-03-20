@@ -160,3 +160,34 @@ class AgentCastClient:
         )
         resp.raise_for_status()
         logger.info("Abandoned interview %s", interview_id)
+
+    def get_dashboard_token(self) -> str:
+        """
+        Request a dashboard token by proving ownership with ED25519 signature.
+        Token is valid for 1 hour and required for dashboard API access.
+
+        Returns:
+            str: Dashboard token (base64url encoded)
+
+        Raises:
+            httpx.HTTPStatusError: If signature verification fails (401) or agent not found (404)
+        """
+        path = "/v1/dashboard-token"
+        body = b"{}"
+        headers = {
+            **self._auth_headers("POST", path, body),
+            "Content-Type": "application/json",
+        }
+        resp = httpx.post(
+            f"{self.base_url}{path}",
+            content=body,
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        token = data["dashboard_token"]
+        logger.info(
+            "Dashboard token obtained (expires in %s seconds)", data["expires_in"]
+        )
+        return token
