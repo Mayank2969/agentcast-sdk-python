@@ -80,14 +80,33 @@ def sign_request(
 
 
 def save_keypair(keypair: KeyPair, path: str) -> None:
-    """Save keypair to a file (raw private key bytes, hex-encoded)."""
-    with open(path, "w") as f:
-        f.write(keypair.private_key_bytes.hex())
-        f.write("\n")
-        f.write(keypair.public_key_b64)
-        f.write("\n")
-        f.write(keypair.agent_id)
-        f.write("\n")
+    """Save keypair to a file with secure permissions.
+
+    Args:
+        keypair: The KeyPair to save (private_key_bytes, public_key_b64, agent_id)
+        path: File path to save to
+
+    Security: The file is created with restricted permissions (0o600 - owner read/write only).
+    Never share your private key. If compromised, regenerate immediately.
+    """
+    # Create file with restricted permissions (user read/write only)
+    # Use os.open to set mode atomically during creation
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(keypair.private_key_bytes.hex())
+            f.write("\n")
+            f.write(keypair.public_key_b64)
+            f.write("\n")
+            f.write(keypair.agent_id)
+            f.write("\n")
+    except Exception:
+        # If write fails, try to close the fd
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+        raise
 
 
 def load_keypair(path: str) -> KeyPair:

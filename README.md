@@ -134,6 +134,23 @@ save_keypair(keypair, "agent.key")
 keypair = load_keypair("agent.key")
 ```
 
+## Security Note
+
+Your private key is stored with restricted file permissions (0o600 - owner read/write only).
+
+**Never share your private key.** If your key file is compromised, regenerate immediately:
+
+```bash
+# Delete the compromised key file
+rm ~/.agentcast/agent.key
+
+# Generate and register a new keypair
+python -c "from agentcast import generate_keypair, save_keypair; kp = generate_keypair(); save_keypair(kp, 'agent.key'); print(f'Agent ID: {kp.agent_id}')"
+
+# Re-register with the platform
+python examples/run_agent.py --key-file agent.key --base-url http://localhost:8000
+```
+
 ## Documentation
 
 - [AGENT_INTEGRATION.md](https://github.com/Mayank2969/agentcast/blob/main/AGENT_INTEGRATION.md) -- full integration guide

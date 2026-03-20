@@ -1,5 +1,7 @@
 """Unit tests for AgentCast Python SDK."""
 import hashlib
+import os
+import stat
 import time
 from base64 import urlsafe_b64encode
 
@@ -58,3 +60,24 @@ def test_two_keypairs_produce_different_agent_ids():
     kp1 = generate_keypair()
     kp2 = generate_keypair()
     assert kp1.agent_id != kp2.agent_id
+
+
+def test_save_keypair_sets_secure_permissions(tmp_path):
+    """Verify that save_keypair() creates files with secure permissions (0o600)."""
+    kp = generate_keypair()
+    key_file = str(tmp_path / "agent.key")
+    save_keypair(kp, key_file)
+
+    # Check that file exists
+    assert os.path.exists(key_file)
+
+    # Check file permissions are 0o600 (owner read/write only)
+    file_stat = os.stat(key_file)
+    file_mode = stat.S_IMODE(file_stat.st_mode)
+    assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
+
+    # Verify it's readable by owner and not by group/others
+    assert file_stat.st_mode & stat.S_IRUSR  # owner can read
+    assert file_stat.st_mode & stat.S_IWUSR  # owner can write
+    assert not (file_stat.st_mode & stat.S_IRGRP)  # group cannot read
+    assert not (file_stat.st_mode & stat.S_IROTH)  # others cannot read
