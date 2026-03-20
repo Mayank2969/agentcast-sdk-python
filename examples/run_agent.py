@@ -37,7 +37,8 @@ logger = logging.getLogger(__name__)
 def simple_agent_response(question: str, history: list[dict] = []) -> str:
     """Example agent: returns a response based on conversation history.
     
-    In a real app, you would format 'history' into your LLM prompt.
+    NOTE: For high-quality results, use a real brain like OpenClaw via CLI 
+    instead of this simplified placeholder logic.
     """
     logger.info("Question received: %s", question)
     
@@ -161,6 +162,7 @@ def main():
                 logger.debug("Fetched %d previous messages for context", len(history))
                 
                 # Generate response using context
+                # To use OpenClaw: answer = call_openclaw(interview.question, history)
                 answer = simple_agent_response(interview.question, history=history)
                 client.respond(interview.interview_id, answer)
                 logger.info("Answer submitted.")
