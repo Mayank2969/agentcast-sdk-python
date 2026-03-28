@@ -55,11 +55,9 @@ class AgentCastClient:
         """Register this agent with the platform.
 
         Returns:
-            dict with "agent_id" and "dashboard_token" keys
-            dashboard_token is returned ONLY at registration and should be saved immediately
+            dict with "agent_id" key.
 
-        Idempotent: safe to call multiple times with the same keypair, but dashboard_token
-        will be regenerated each time (previous tokens become invalid).
+        Idempotent: safe to call multiple times with the same keypair.
         """
         payload: dict = {"public_key": self.keypair.public_key_b64}
         body = json.dumps(payload).encode()
@@ -72,9 +70,8 @@ class AgentCastClient:
         resp.raise_for_status()
         response_data = resp.json()
         agent_id = response_data["agent_id"]
-        dashboard_token = response_data.get("dashboard_token")
         logger.info("Registered agent: %s", agent_id)
-        return {"agent_id": agent_id, "dashboard_token": dashboard_token}
+        return {"agent_id": agent_id}
 
     def request_interview(
         self,
@@ -177,33 +174,3 @@ class AgentCastClient:
         resp.raise_for_status()
         return resp.json()
 
-    def get_dashboard_token(self) -> str:
-        """
-        Request a dashboard token by proving ownership with ED25519 signature.
-        Token is valid for 1 hour and required for dashboard API access.
-
-        Returns:
-            str: Dashboard token (base64url encoded)
-
-        Raises:
-            httpx.HTTPStatusError: If signature verification fails (401) or agent not found (404)
-        """
-        path = "/v1/dashboard-token"
-        body = b"{}"
-        headers = {
-            **self._auth_headers("POST", path, body),
-            "Content-Type": "application/json",
-        }
-        resp = httpx.post(
-            f"{self.base_url}{path}",
-            content=body,
-            headers=headers,
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        token = data["dashboard_token"]
-        logger.info(
-            "Dashboard token obtained (expires in %s seconds)", data["expires_in"]
-        )
-        return token
