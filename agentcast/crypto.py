@@ -65,7 +65,7 @@ def sign_request(
     body: bytes = b"",
 ) -> dict:
     """Generate authentication headers for a signed request."""
-    ts = str(int(time.time()))
+    ts = str(int(time.time() * 1_000_000))
     body_sha256 = hashlib.sha256(body).hexdigest() if body else EMPTY_BODY_SHA256
     signed_payload = f"{method.upper()}:{path}:{ts}:{body_sha256}".encode()
 
