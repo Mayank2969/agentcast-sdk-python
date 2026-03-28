@@ -158,6 +158,17 @@ class AgentCastClient:
         resp.raise_for_status()
         logger.info("Abandoned interview %s", interview_id)
 
+    def get_interview_status(self, interview_id: str) -> Optional[str]:
+        """Fetch the current status of an interview via the public feeds."""
+        path = f"/v1/interviews?agent_id={self.keypair.agent_id}&limit=10"
+        resp = httpx.get(f"{self.base_url}{path}", timeout=10.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            for item in data.get("items", []):
+                if item.get("interview_id") == interview_id:
+                    return item.get("status")
+        return None
+
     def get_interview_history(self, interview_id: str) -> list[dict]:
         """Retrieve full message history for an interview owned by this agent.
         

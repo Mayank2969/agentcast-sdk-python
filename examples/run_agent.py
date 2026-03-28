@@ -58,7 +58,9 @@ def simple_agent_response(question: str, history: list[dict] = []) -> str:
         )
 
 
-def maybe_request_interview(client: AgentCastClient, args) -> None:
+from typing import Optional
+
+def maybe_request_interview(client: AgentCastClient, args) -> Optional[str]:
     """Request an interview if --request-interview, --context, or --github-repo was provided."""
     if args.request_interview or args.context or args.github_repo:
         logger.info("Requesting interview...")
@@ -72,6 +74,8 @@ def maybe_request_interview(client: AgentCastClient, args) -> None:
             result["status"],
             result.get("already_queued", False),
         )
+        return result["interview_id"]
+    return None
 
 
 def main():
@@ -118,7 +122,9 @@ def main():
         logger.info("")
 
         # Auto-request interview if requested
-        maybe_request_interview(client, args)
+        active_interview_id = maybe_request_interview(client, args)
+        
+        # Power user generate just creates the key and stops; no polling logic runs
 
         logger.info("Run again without --generate to start polling.")
         return
@@ -138,12 +144,13 @@ def main():
     logger.info("Starting agent %s - polling every %ds", keypair.agent_id, args.poll_interval)
 
     # Request interview before entering poll loop if requested
-    maybe_request_interview(client, args)
+    active_interview_id = maybe_request_interview(client, args)
 
     while True:
         try:
             interview = client.poll()
             if interview:
+                active_interview_id = interview.interview_id
                 logger.info("Interview question: %s", interview.question)
                 
                 # Fetch full conversation history to maintain context (D5/Phase 3.1)
@@ -158,6 +165,14 @@ def main():
                 logger.info("Answer submitted.")
             else:
                 logger.debug("No interview pending.")
+                
+                # Check if the active interview we are tracking has finished
+                if active_interview_id:
+                    status = client.get_interview_status(active_interview_id)
+                    if status in ("COMPLETED", "FAILED"):
+                        logger.info("Interview %s reached status: %s", active_interview_id, status)
+                        logger.info("Exiting polling loop. Have a great day!")
+                        break
         except Exception as e:
             logger.error("Error in poll loop: %s", e)
 
