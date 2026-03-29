@@ -11,6 +11,7 @@ setup(
     install_requires=[
         "cryptography>=42.0.0",
         "httpx>=0.27.0",
+        "guardrails-ai>=0.4.0",
     ],
     extras_require={
         "dev": ["pytest>=7.0"],
