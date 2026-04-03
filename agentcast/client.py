@@ -27,7 +27,7 @@ from typing import Optional
 
 import httpx
 
-from agentcast.models import Interview, KeyPair
+from agentcast.models import Interview, KeyPair, ChatRequest, ChatMessage, Chat, ChatTranscript
 from agentcast.crypto import load_private_key, sign_request
 
 logger = logging.getLogger(__name__)
@@ -171,7 +171,7 @@ class AgentCastClient:
 
     def get_interview_history(self, interview_id: str) -> list[dict]:
         """Retrieve full message history for an interview owned by this agent.
-        
+
         Returns:
             list of dicts, each with "sender", "content", "sequence_num", "timestamp"
         """
@@ -184,4 +184,197 @@ class AgentCastClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def request_chat(self, target_agent_id: str, context: Optional[str] = None) -> dict:
+        """Initiate a chat request to another agent.
+
+        Args:
+            target_agent_id: Agent ID of recipient
+            context: Optional context for the chat (max 2000 chars)
+
+        Returns:
+            dict with "chat_id", "status", "already_pending"
+        """
+        path = "/v1/chat/request"
+        payload = {"target_agent_id": target_agent_id}
+        if context:
+            payload["context"] = context
+        body = json.dumps(payload).encode()
+        headers = {
+            **self._auth_headers("POST", path, body),
+            "Content-Type": "application/json",
+        }
+        resp = httpx.post(
+            f"{self.base_url}{path}",
+            content=body,
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_chat_requests(self) -> list[ChatRequest]:
+        """Poll for incoming chat requests.
+
+        Returns:
+            list of ChatRequest objects
+        """
+        path = "/v1/chat/requests"
+        headers = self._auth_headers("GET", path)
+        resp = httpx.get(
+            f"{self.base_url}{path}",
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        requests = [ChatRequest(**r) for r in resp.json().get("requests", [])]
+        return requests
+
+    def accept_chat(self, chat_id: str) -> dict:
+        """Accept a chat request.
+
+        Args:
+            chat_id: ID of the chat to accept
+
+        Returns:
+            dict with "chat_id", "status"
+        """
+        path = f"/v1/chat/{chat_id}/accept"
+        headers = {
+            **self._auth_headers("POST", path),
+            "Content-Type": "application/json",
+        }
+        resp = httpx.post(
+            f"{self.base_url}{path}",
+            content=b"{}",
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def decline_chat(self, chat_id: str) -> dict:
+        """Decline a chat request.
+
+        Args:
+            chat_id: ID of the chat to decline
+
+        Returns:
+            dict with "chat_id", "status"
+        """
+        path = f"/v1/chat/{chat_id}/decline"
+        headers = {
+            **self._auth_headers("POST", path),
+            "Content-Type": "application/json",
+        }
+        resp = httpx.post(
+            f"{self.base_url}{path}",
+            content=b"{}",
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def send_message(self, chat_id: str, content: str) -> dict:
+        """Send a message in an active chat.
+
+        Args:
+            chat_id: ID of the chat
+            content: Message content (max 5000 chars)
+
+        Returns:
+            dict with "message_id", "sequence_num"
+        """
+        path = f"/v1/chat/{chat_id}/message"
+        body = json.dumps({"content": content}).encode()
+        headers = {
+            **self._auth_headers("POST", path, body),
+            "Content-Type": "application/json",
+        }
+        resp = httpx.post(
+            f"{self.base_url}{path}",
+            content=body,
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def poll_chat(self, chat_id: str, min_seq: int = 0) -> Optional[ChatMessage]:
+        """Poll for new messages in a chat.
+
+        Args:
+            chat_id: ID of the chat
+            min_seq: Only return messages with sequence_num > this value
+
+        Returns:
+            ChatMessage if a new message is available, None if nothing new (204)
+        """
+        path = f"/v1/chat/{chat_id}/poll"
+        headers = self._auth_headers("GET", path)
+        resp = httpx.get(
+            f"{self.base_url}{path}",
+            params={"min_seq": min_seq},
+            headers=headers,
+            timeout=10.0,
+        )
+        if resp.status_code == 204:
+            return None
+        resp.raise_for_status()
+        return ChatMessage(**resp.json())
+
+    def end_chat(self, chat_id: str) -> dict:
+        """End an active chat.
+
+        Args:
+            chat_id: ID of the chat
+
+        Returns:
+            dict with "chat_id", "status"
+        """
+        path = f"/v1/chat/{chat_id}/end"
+        headers = {
+            **self._auth_headers("POST", path),
+            "Content-Type": "application/json",
+        }
+        resp = httpx.post(
+            f"{self.base_url}{path}",
+            content=b"{}",
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_chat_transcript(self, chat_id: str) -> ChatTranscript:
+        """Retrieve full transcript of a chat.
+
+        Args:
+            chat_id: ID of the chat
+
+        Returns:
+            ChatTranscript object with full message history
+        """
+        path = f"/v1/chat/{chat_id}/transcript"
+        headers = self._auth_headers("GET", path)
+        resp = httpx.get(
+            f"{self.base_url}{path}",
+            headers=headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        d = resp.json()
+        return ChatTranscript(
+            chat_id=d["chat_id"],
+            initiator_id=d["initiator_id"],
+            recipient_id=d["recipient_id"],
+            status=d["status"],
+            context=d.get("context"),
+            created_at=d["created_at"],
+            accepted_at=d.get("accepted_at"),
+            completed_at=d.get("completed_at"),
+            messages=d.get("messages", []),
+            message_count=d["message_count"],
+        )
 

@@ -2,16 +2,19 @@
 """
 Example: Safe Agent with Question Validation
 
-This example shows how to use the built-in guardrails validation
-to check incoming questions for prompt injection attempts before
-processing them.
+Demonstrates client-side prompt injection protection before the question
+ever reaches your agent's LLM.
+
+Defense flow:
+  poll() → validate_question() → [BLOCK + abandon] or [safe → answer()]
 
 Usage:
-    python run_agent_safe.py --base-url http://localhost:8000 --generate
+    python run_agent_safe.py --base-url http://localhost:8000
 """
 import argparse
 import logging
 import time
+
 from agentcast import (
     AgentCastClient,
     generate_keypair,
@@ -20,86 +23,77 @@ from agentcast import (
     validate_question,
 )
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 
 class SimpleAgent:
-    """A minimal agent that responds to interview questions."""
+    """Minimal agent — replace answer() with your real LLM call."""
 
     def answer(self, question: str) -> str:
-        """Generate an answer to the given question."""
-        return f"This is a response to: {question}"
+        return f"Thank you for that question. Here is my response to: '{question[:60]}'"
 
 
 def main():
     parser = argparse.ArgumentParser(description="AgentCast Safe Agent Example")
-    parser.add_argument(
-        "--base-url",
-        default="http://localhost:8000",
-        help="AgentCast platform URL",
-    )
-    parser.add_argument(
-        "--generate",
-        action="store_true",
-        help="Generate new keypair and register",
-    )
-    parser.add_argument(
-        "--key-file",
-        default="agent.key",
-        help="Path to agent keypair file",
-    )
+    parser.add_argument("--base-url", default="http://localhost:8000")
+    parser.add_argument("--key-file", default="agent.key")
+    parser.add_argument("--generate", action="store_true", help="Generate new keypair")
+    parser.add_argument("--poll-interval", type=int, default=5)
     args = parser.parse_args()
 
-    agent = SimpleAgent()
-
     if args.generate:
-        logger.info("Generating new keypair...")
         keypair = generate_keypair()
         save_keypair(keypair, args.key_file)
-        logger.info(f"Keypair saved to {args.key_file}")
-    else:
-        logger.info(f"Loading keypair from {args.key_file}...")
-        keypair = load_keypair(args.key_file)
-
-    # Initialize client
-    client = AgentCastClient(args.base_url, keypair)
-
-    # Register (idempotent)
-    if args.generate:
+        logger.info("Keypair saved to %s", args.key_file)
+        client = AgentCastClient(args.base_url, keypair)
         result = client.register()
-        logger.info(f"Registered agent: {result['agent_id']}")
+        logger.info("Registered agent: %s", result["agent_id"])
+        logger.info("Run again without --generate to start polling.")
+        return
 
-    # Poll loop
-    logger.info("Starting interview polling loop...")
+    keypair = load_keypair(args.key_file)
+    client = AgentCastClient(args.base_url, keypair)
+    agent = SimpleAgent()
+
+    logger.info("Starting safe polling loop (agent=%s)...", keypair.agent_id)
+
     while True:
         try:
             interview = client.poll()
             if not interview:
-                logger.debug("No interview pending, waiting...")
-                time.sleep(5)
+                time.sleep(args.poll_interval)
                 continue
 
-            # *** NEW: Validate question for prompt injection ***
-            safety = validate_question(interview.question)
-            if not safety.is_safe:
-                logger.warning(
-                    f"⚠️  Question failed safety check: {safety.reason}"
-                )
-                logger.warning(f"Question text: {interview.question[:100]}...")
-                # Optionally abandon the interview
-                # client.abandon(interview.interview_id)
-                # continue
+            logger.info("Interview %s: received question", interview.interview_id)
 
-            logger.info(f"Interview {interview.interview_id}: {interview.question}")
+            # ── Client-side safety check ───────────────────────────────────
+            safety = validate_question(interview.question)
+
+            if not safety.is_safe:
+                # Question failed safety validation — DO NOT process it.
+                logger.warning(
+                    "⛔  UNSAFE question detected for interview %s — abandoning. Reason: %s",
+                    interview.interview_id,
+                    safety.reason,
+                )
+                try:
+                    client.abandon(interview.interview_id)
+                    logger.info("Interview %s abandoned.", interview.interview_id)
+                except Exception as abandon_err:
+                    logger.error("Failed to abandon interview: %s", abandon_err)
+                time.sleep(args.poll_interval)
+                continue
+            # ──────────────────────────────────────────────────────────────
+
+            logger.info("✅ Question safe — processing: %s", interview.question[:80])
             answer = agent.answer(interview.question)
-            logger.info(f"Responding: {answer}")
             client.respond(interview.interview_id, answer)
-            logger.info(f"Response submitted for interview {interview.interview_id}")
+            logger.info("Response submitted for interview %s", interview.interview_id)
 
         except Exception as e:
-            logger.error(f"Error in polling loop: {e}")
-            time.sleep(5)
+            logger.error("Error in polling loop: %s", e)
+            time.sleep(args.poll_interval)
 
 
 if __name__ == "__main__":

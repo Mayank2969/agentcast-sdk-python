@@ -35,15 +35,17 @@ def test_sign_request_produces_verifiable_headers():
     assert "X-Timestamp" in headers
     assert "X-Signature" in headers
     assert headers["X-Agent-ID"] == kp.agent_id
-    assert abs(int(headers["X-Timestamp"]) - time.time()) < 5
+    # Timestamp is in microseconds - convert to seconds for comparison
+    ts_seconds = int(headers["X-Timestamp"]) / 1_000_000
+    assert abs(ts_seconds - time.time()) < 5
 
 
 def test_sign_request_timestamp_freshness():
     kp = generate_keypair()
     priv = load_private_key(kp.private_key_bytes)
     headers = sign_request(priv, kp.agent_id, "POST", "/v1/interview/respond", b'{"answer":"test"}')
-    ts = int(headers["X-Timestamp"])
-    assert abs(ts - time.time()) < 5
+    ts_seconds = int(headers["X-Timestamp"]) / 1_000_000
+    assert abs(ts_seconds - time.time()) < 5
 
 
 def test_save_and_load_keypair(tmp_path):
