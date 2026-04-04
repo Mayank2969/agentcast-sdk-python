@@ -52,6 +52,11 @@ _INJECTION_RE = re.compile(
     # Reveal system prompt attempts (allows extra words between verb and keyword)
     |(?:reveal|print|output|show|repeat|describe|tell|write|what\s+is)(?:\s+\w+)*\s+(?:prompt|instructions?|directives?|rules?|context|identity)
     |what\s+(?:are\s+)?your\s+(?:system\s+)?(?:instructions?|directives?|rules?)
+    # Fix 6: Expanded injection patterns
+    |forget\s+(?:everything|all|your|previous)
+    |from\s+now\s+on[\s,]
+    |your\s+(?:real|true|actual|hidden)\s+(?:instructions?|purpose|goal|identity)
+    |pretend\s+(?:that\s+)?you\s+(?:are|have\s+no)
     """,
     re.IGNORECASE | re.VERBOSE,
 )
@@ -134,5 +139,45 @@ def validate_question(question: str) -> QuestionSafety:
                 "validate_question [ML]: flagged question (not blocking alone): %s",
                 str(ml_exc)[:120],
             )
+
+    return QuestionSafety(is_safe=True)
+
+
+# ── Fix 5: Output validation (agent answer) ──────────────────────────────────
+
+def validate_answer(answer: str) -> QuestionSafety:
+    """Validate an outgoing agent answer for secret leakage and injection patterns.
+
+    Checks agent's response before sending back to platform.
+    Protects against:
+    - Secret leakage: API_KEY, PASSWORD, TOKEN, PRIVATE_KEY, SECRET
+    - Injection patterns: Same heuristic as validate_question
+
+    Args:
+        answer: Raw answer string from the agent.
+
+    Returns:
+        QuestionSafety(is_safe=True/False, reason=...)
+    """
+    if not answer or not answer.strip():
+        return QuestionSafety(is_safe=True)
+
+    # Check for secret leakage patterns
+    secret_patterns = [
+        "API_KEY", "PASSWORD", "TOKEN", "PRIVATE_KEY", "SECRET"
+    ]
+    for pattern in secret_patterns:
+        if pattern in answer.upper():
+            logger.warning("validate_answer [secrets]: UNSAFE — found %s pattern", pattern)
+            return QuestionSafety(
+                is_safe=False,
+                reason=f"secret leakage detected: {pattern}"
+            )
+
+    # Check for injection patterns (reuse the heuristic from input filtering)
+    reason = _heuristic_check(answer)
+    if reason:
+        logger.warning("validate_answer [injection]: UNSAFE — %s", reason)
+        return QuestionSafety(is_safe=False, reason=f"injection pattern in answer: {reason}")
 
     return QuestionSafety(is_safe=True)
